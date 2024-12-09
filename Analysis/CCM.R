@@ -1,4 +1,4 @@
-################################## Load packages, data, and functions ###################################
+### Load packages, data, and functions ###
 # packages
 packages=c('tidyverse','knitr','lubridate','dplyr','purrr','rEDM','metap',
            'doParallel','foreach','imputeTS', "kableExtra",
@@ -13,14 +13,11 @@ cores_all=detectCores()
 cores=ifelse(cores_all<9,4,60)
 core_type='PSOCK'
 
-num_sample=100
-num_surr=1000
-
-## load data and functions
+# load data and functions
 df <- read.csv("china_flu_season.csv")
 df$date <- as.Date(df$date )
 
-## logit transformation of fluP
+# logit transformation of fluP
 dfA=df 
 logitTransform <- function(p, epsilon = 1e-5) { 
   p <- ifelse(p == 0, epsilon, ifelse(p == 1, 1-epsilon, p))
@@ -29,20 +26,14 @@ logitTransform <- function(p, epsilon = 1e-5) {
 
 dfA$fluP <- logitTransform(dfA$fluP)
 
-### data standardization --- dtrend, dseason, and normalizaiton
-nomz <- function(x, normalization=T, dtrend=T,dseason=T, season_sd=T, sea=35,  dTtype="linear"){
+# data standardization --- dtrend and normalize
+nomz <- function(x, normalization=T, dtrend=T, dTtype="linear"){
   x <- as.numeric(x)
   xt <- x
   # Detrend
   if(dtrend==T & dTtype=="first"){xt <- diff(xt)} else if (dtrend==T & dTtype=="linear"){
     lm.t <- lm(xt~c(1:length(xt)))
     xt <- xt-(lm.t$coefficients[1]+lm.t$coefficients[2]*c(1:length(xt)))}
-  # Deseason
-  if(dseason==T){
-    xs <- as.numeric(apply(matrix(xt[1:(sea*length(xt)%/%sea)],ncol=sea,byrow=T),2,mean,na.rm=T))
-    xsd <- as.numeric(apply(matrix(xt[1:(sea*length(xt)%/%sea)],ncol=sea,byrow=T),2,sd,na.rm=T))
-    xt <- xt-c(rep(xs,1+length(xt)%/%sea))[1:length(xt)]
-    if(season_sd==T){xt <- xt/(c(rep(xsd,1+length(xt)%/%sea))[1:length(xt)])}}
   # Normalization (zero mean & unity variance)
   if(normalization==T){xt <- (xt-mean(xt,na.rm=T))/sd(xt,na.rm=T)}
   return(xt)
@@ -51,32 +42,12 @@ nomz <- function(x, normalization=T, dtrend=T,dseason=T, season_sd=T, sea=35,  d
 df_smapc=dfA %>% select(state,date,temp,ah,o3,pm2.5,fluP) %>% group_by(state) %>% 
   mutate_at(3:ncol(.),nomz) %>% ungroup() 
 
-################### Calculate noise factors for surrogate data of environmental variables (the whole-year data) #######################
-
+### Calculate noise factors for surrogate data of environmental variables (the whole-year data) ###
 # whole-year environmental data
 df <- read.csv("china_flu_full.csv")
 df$date <- as.Date(df$date)
 
-### data standardization --- dtrend, dseason, and normalizaiton
-nomz <- function(x, normalization=T, dtrend=T,dseason=T, season_sd=T, sea=52,  dTtype="linear"){
-  x <- as.numeric(x)
-  xt <- x
-  # Detrend
-  if(dtrend==T & dTtype=="first"){xt <- diff(xt)} else if (dtrend==T & dTtype=="linear"){
-    lm.t <- lm(xt~c(1:length(xt)))
-    xt <- xt-(lm.t$coefficients[1]+lm.t$coefficients[2]*c(1:length(xt)))}
-  # Deseason
-  if(dseason==T){
-    xs <- as.numeric(apply(matrix(xt[1:(sea*length(xt)%/%sea)],ncol=sea,byrow=T),2,mean,na.rm=T))
-    xsd <- as.numeric(apply(matrix(xt[1:(sea*length(xt)%/%sea)],ncol=sea,byrow=T),2,sd,na.rm=T))
-    xt <- xt-c(rep(xs,1+length(xt)%/%sea))[1:length(xt)]
-    if(season_sd==T){xt <- xt/(c(rep(xsd,1+length(xt)%/%sea))[1:length(xt)])}}
-  # Normalization (zero mean & unity variance)
-  if(normalization==T){xt <- (xt-mean(xt,na.rm=T))/sd(xt,na.rm=T)}
-  return(xt)
-}
-
-# data standardization
+# data standardization --- dtrend and normalize
 dfB=df  %>% select(state,date,temp,ah,o3,pm2.5)
 dfB_smapc=dfB %>% group_by(state) %>%
   mutate_at(3:ncol(.),nomz) %>% ungroup()
@@ -89,7 +60,6 @@ df_flu <- dfB_smapc %>%
 
 # calculate spar values for independent variables
 fn_state_spar=function(states,keys){
-  
   splineres <- function(spar){
     res <- rep(0, length(x))
     for (i in 1:length(x)){
@@ -98,25 +68,20 @@ fn_state_spar=function(states,keys){
     }
     return(sum(res^2))
   }
-  
   x=df_flu %>% ungroup() %>%
     filter(state==states & key==keys) %>%
     select(date) %>% pull() %>% as.numeric()
-  
   y=df_flu %>% ungroup() %>%
     filter(state==states & key==keys) %>%
     select(value)  %>% pull() %>% as.numeric()
-  
   spars <- seq(0, 1.5, by = 0.1)
   ss <- rep(0, length(spars))
-  
   ss=foreach(i = 1:length(spars),
              .combine=rbind,
              .inorder=FALSE)  %dopar% {
                targetCol = paste("T", i, sep = "")
                ss[i] <- splineres(spars[i])
              }
-  
   spar=spars[which.min(ss)]
   data.frame(state=states,plt=keys,spar)
 }
@@ -182,7 +147,7 @@ fn_surr_data=function(data,ST,plts, tp_value){
   
   set.seed(2019)
   surr_data=
-    SurrogateData(unlist(df[,"plt"]), method = "random_shuffle",
+    SurrogateData(unlist(df[,"plt"]), method = "ebisuzaki",
                   num_surr = num_surr,
                   alpha=alpha) %>%
     as.data.frame()
@@ -190,8 +155,7 @@ fn_surr_data=function(data,ST,plts, tp_value){
   surrA=bind_cols(df,surr_data)
 }
 
-################################### Determine optimal E for the system by each state ###########################################
-
+### Determine optimal E for the system by each state ###
 jishu <- function(x){
   ifelse(x%%2 ==0,F,T)
 }
@@ -259,10 +223,8 @@ E_smapc =E_smapc_out %>% filter(E %in% 2:6) %>%
   filter(rho==max(rho))  %>%
   as.data.frame() 
 
-################################### Determine optimal theta for S-map by each state ###########################################
-
+### Determine optimal theta for S-map by each state ###
 fn_theta_justY=function(data, ST, dis, theta){
-  
   E=E_smapc[E_smapc[,'ST']==ST & E_smapc[,'dis']==dis,'E']
   
   df=data %>%
@@ -309,7 +271,10 @@ best_theta=theta_out %>%
   filter(rho==max(rho)) %>%
   as.data.frame()
 
-############################################# surrogate CCM #####################################################
+### surrogate CCM ###
+num_sample=100
+num_surr=1000
+
 fn_season_ccm=function(data,ST,x,y,tp_value){
   
   df=data %>%
@@ -364,6 +329,7 @@ registerDoParallel(cl)
 ccm_out=foreach(j = 1:nrow(plist),
                 .packages = c("rEDM","tidyverse"),
                 .combine=rbind,
+                # .export='num_sample',
                 .inorder=FALSE)  %dopar% {
                   ccm_out=plist[j,] %>% pmap_df(fn_season_ccm)
                 }
@@ -417,7 +383,7 @@ meta_ccm_p_out=plist %>% pmap_df(fn_metap)
 
 meta_ccm_p_out
 
-################################################ Effect strength #################################################
+### Effect strength ###
 fn_smapc=function(data,ST,plt,dis,tp_value){
   
   E=E_smapc[E_smapc$ST==ST & E_smapc$dis==dis,"E"]
@@ -472,7 +438,6 @@ plist=list(data=list(df_smapc),
            plt=c('o3','ah','temp',"pm2.5"),
            tp_value=-2:0) %>% cross_df()
 
-
 cl <- makeCluster(cores[1],type = core_type)
 registerDoParallel(cl)
 C_out=foreach(i = 1:nrow(plist),
@@ -485,29 +450,21 @@ C_out=foreach(i = 1:nrow(plist),
 
 stopCluster(cl)
 
-# ############################### Plotting S-map Effect Size ###############################
 # Reshape the C_out output: effect strength estimates
 SEeffect<- C_out %>%
   select(date,ST,tp_value,dis,plt,effect) %>%
-  mutate(tp_value=factor(tp_value,
-                         levels=c(0, -1, -2)))
+  mutate(tp_value=factor(tp_value, levels=c(0, -1, -2)))
+SEeffect$tp_value <- factor(SEeffect$tp_value, levels=c(0, -1, -2), labels=c("Lag 0","Lag 1","Lag 2"))
 
-SEeffect$tp_value <- factor(SEeffect$tp_value, levels=c(0, -1, -2), labels=c("Lag0","Lag1","Lag2"))
-
-# filter out the extreme values
 SEeffect_ex <- SEeffect %>% group_by(ST, tp_value,plt,dis) %>%
   filter(effect < quantile(effect, probs=.95, na.rm = T),
          effect > quantile(effect, probs=.05, na.rm = T)) 
 
-
 mean_effect <- SEeffect_ex %>% group_by(ST, tp_value,plt,dis) %>%
   summarise(medianE=median(effect)) %>% ungroup
 
-
 mytheme <- theme_bw() +
   theme(panel.border = element_blank(),
-        panel.background = element_rect(fill = NA, colour ="grey90" ),
-        strip.background = element_rect(fill = NA, colour = NA),
         strip.text.x = element_text(size = 14, color = "gray10",
                                     face='bold',family='serif'),
         panel.grid.major = element_blank(),
@@ -523,7 +480,7 @@ mytheme <- theme_bw() +
     legend.background = element_rect(color = NA),
     legend.box.margin = margin(0, 0, 0, 0, "cm"),  
     legend.margin = margin(0, 0, 0, 0, "cm"),   
-    plot.margin = margin(0.5, 0.5, 0.1, 0.5, "cm")  
+    plot.margin = margin(0.5, 0.5, 0.1, 0.5, "cm")
   )+
   theme(axis.title.x  = element_text(size=16,family='serif'),
         axis.title.y  = element_text(size=16,family='serif'),
@@ -531,16 +488,37 @@ mytheme <- theme_bw() +
         axis.text.y = element_text(color="black", size=16,family='serif'),
         plot.title = element_text(size = 20, hjust=0.5, family='serif'))
 
-ggplot(mean_effect, aes(x = plt, y = medianE, fill = as.factor(tp_value))) +
-  geom_boxplot(position = position_dodge(0.5),alpha=1, outlier.shape = NA,width = 0.5) +  
-  scale_fill_manual(name = "Lag", 
-                    values = c("gray30", "gray50", "gray70"), 
-                    labels = c("Lag 0", "Lag 1", "Lag 2")) +     
-  scale_x_discrete(limits = rev(c( "temp", "ah","pm2.5", "o3")), 
-                   labels = rev(c( expression("T"), expression("AH"), expression(PM[2.5]),expression(O[3])))) +
-  labs(x = "", y = 'Effect estimates (CCM)') +
-  geom_hline(yintercept = 0, linetype = 2, color = "black") +
+mean_effect1 <- mean_effect %>% group_by(plt, tp_value) %>% summarize(Size= median(medianE), 
+                                                                      SizeL= quantile(medianE,0.0005),
+                                                                      SizeH= quantile(medianE,0.9995))
+
+ggplot(mean_effect1, aes(x = fct_rev(plt), group = interaction(plt, tp_value))) +
+  geom_errorbar(aes(ymin = SizeL, ymax = SizeH), 
+                color = "gray", 
+                position = position_dodge(0.6), width = 0, linewidth = 1, alpha = 0.8) +
+  geom_point(aes(y = Size, fill = Size, shape = as.factor(tp_value)), 
+             color = "gray", 
+             size = 4, stroke = 0.8, position = position_dodge(0.6)) +
+  scale_y_continuous(breaks = c(0)) +  
+  scale_fill_gradientn(name = "Effect Size", 
+                       colors = rev(brewer.pal(11, "RdBu")),  
+                       limits = c(-0.4, 0.4), 
+                       breaks = c(-0.4, 0, 0.4), 
+                       labels = c("-0.4", "0", "0.4")) +
+  scale_shape_manual(name = "Lag", 
+                     values = c(21, 22, 23)) + 
+  labs(x = '', y = expression(paste('Effect estimates'))) + 
+  scale_x_discrete(limits = rev(c("temp", "ah", "pm2.5", "o3")), 
+                   labels = rev(c(expression("T"), expression("AH"), expression(PM[2.5]), expression(O[3])))) +
+  geom_hline(yintercept = 0, linetype = 2, color = "gray") +
   mytheme +
-  theme(legend.position = "bottom")  
-
-
+  guides(shape = guide_legend(label.position = "bottom", 
+                              title.position = "top", 
+                              nrow = 1)) +  
+  theme(axis.title.y = element_blank(),  
+        axis.text.y = element_blank(),   
+        axis.ticks.y = element_blank(),
+        panel.border = element_blank(),
+        axis.line.y = element_blank(),   
+        legend.key = element_blank(),   
+        legend.background = element_blank())  

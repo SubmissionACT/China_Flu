@@ -1,12 +1,12 @@
-################################## Load packages & data ###################################
+### Load packages & data ###
 library(tidyverse); library(lubridate); library(dlnm); library(splines);
 library(tsModel); library(gnm);library(ggpubr);library(metafor);
-library(mgcv); library(imputeTS)
+library(mgcv); library(imputeTS); library(RColorBrewer)
 
 df <- read.csv("china_flu_season.csv")
 dfA <- df %>% mutate(fluP=ifelse(fluP==0, 1e-5, fluP), year = year(date), month = month(date))
 
-################################## State-level GLM ###################################
+### State-level GLM ###
 glm_function <- function(dat, Y='fluP', x1='value', xlag=0, cityname, variable) {
   
   df <- dat %>%
@@ -91,7 +91,7 @@ out_pm25 <- results$pm2.5
 out_ah   <- results$ah
 out_temp <- results$temp
 
-########################### Meta analysis of GLM beta results ############################
+### Meta analysis of GLM beta results ###
 fmeta=function(dat){
   out=dat
   
@@ -159,63 +159,12 @@ df_gam_final=rbind(df1,df2,df3,df4) %>%
   mutate(sig=ifelse(gam.p<0.05 & state!="ALL", 'sig', ifelse(gam.p<0.001 & state=="ALL", 'sig','non_sig' )),
          sig=factor(sig, levels=c("non_sig","sig"))) 
 
-########################################## Plot ##########################################
+### Plot ###
 df_gam_final$state <- ifelse(tolower(df_gam_final$state) == "all", "Overall",
                              paste0(toupper(substring(df_gam_final$state, 1, 1)),
                                     tolower(substring(df_gam_final$state, 2))))
 df_gam_final[df_gam_final$state=="Inner mongolia", "state"] <- "Inner Mongolia"
 df_gam_final$plt <- factor(df_gam_final$plt, levels=c( "o3","pm2.5","ah","temp"))
-
-# Plotting tate-specific GLM results
-abc_levels=str_sort(unique(df_gam_final$state)[1:30],decreasing=F)
-
-dat_glm_ST <- df_gam_final %>% 
-  filter(state!='Overall' & lag=='Lag0') %>% 
-  mutate(state=factor(state, levels= abc_levels)) 
-
-dat_glm_ST$plt <- factor(dat_glm_ST$plt, levels=c("o3","pm2.5","ah","temp"),
-                         labels = c(expression(O[3]), expression(PM[2.5]), expression("AH"), expression("T")))
-
-mytheme <- theme_bw() +
-  theme(panel.border = element_blank(),
-        panel.background = element_rect(fill = NA, colour ="grey90" ),
-        strip.background = element_rect(fill = NA, colour = NA),
-        strip.text.x = element_text(size = 15, color = "black", face='bold', family='serif'),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.line = element_line(size = 0.5, linetype = "solid", colour = "black"))+
-  theme(
-    legend.position = "None",
-    legend.title=element_text(size=18,family='serif'),
-    legend.key.width= unit(1.1, 'cm'),
-    legend.text = element_text(size=14, color = "black",family='serif'),
-    legend.spacing.y = unit(0.1, 'cm'),
-    legend.background = element_rect(color = NA),
-    legend.box.margin = margin(0.1,0.1,0.1,0.1,"cm")) +
-  theme(axis.title.x  = element_text(size=15,family='serif'),
-        axis.title.y  = element_text(size=20,family='serif'),
-        axis.text.x = element_text(color="black", size=14,family='serif'),
-        axis.text.y = element_text(color="black", size=14,family='serif'),
-        plot.title = element_text(size = 20, hjust=0.5, family='serif'))
-
-
-p_glm_ST_lag= ggplot(dat_glm_ST) + 
-  geom_errorbar(aes(ymin=SizeL, ymax=SizeH, x=fct_rev(state)), color='gray',
-                position = position_dodge(0.8), width=0, size=0.8) +
-  geom_point(aes(y=Size, x=fct_rev(state), shape=sig),
-             color='#B4020A', size=3, stroke = 0.5,
-             position = position_dodge(0.8))+
-  facet_wrap(~plt, ncol = 4, labeller = "label_parsed") +
-  scale_shape_manual(name="Statistical significance test:", values = c(1,16),
-                     labels=c("Non-significant","Significant")) +
-  labs(x='',y='') +
-  geom_hline(yintercept = 0, linetype = 2, color = "grey") +
-    scale_y_continuous(limits = c(-1.0, 1.0), 
-                       breaks = seq(-0.5, 0.5, by = 0.5)) + 
-  coord_flip() +
-  mytheme
-
-p_glm_ST_lag
 
 # Plotting meta-analyzed GLM results
 dat_glm_ALL <- df_gam_final %>% 
@@ -248,19 +197,34 @@ mytheme <- theme_bw() +
         axis.text.y = element_text(color="black", size=16,family='serif'),
         plot.title = element_text(size = 20, hjust=0.5, family='serif'))
 
-p_glm_vs_1 <- ggplot(dat_glm_ALL, aes(x = fct_rev(plt), group = interaction(plt, lag))) +
+ggplot(dat_glm_ALL, aes(x = fct_rev(plt), group = interaction(plt, lag))) +
   geom_errorbar(aes(ymin = SizeL, ymax = SizeH), 
-                color = "black", 
-                position = position_dodge(0.6), width = 0, linewidth = 0.6, alpha = 0.5) +
-  geom_point(aes(y = Size, shape = sig, color = as.factor(lag)), 
+                color = "gray", 
+                position = position_dodge(0.6), width = 0, linewidth = 1, alpha = 0.8) +
+  geom_point(aes(y = Size, fill = Size, shape = as.factor(lag)), 
+             color = "gray", 
              size = 4, stroke = 0.8, position = position_dodge(0.6)) +
-  scale_shape_manual(guide = "none", values = c(1, 16)) +
-  scale_color_manual(name = "Lag", values = c("gray30", "gray50", "gray70")) + 
-  labs(x = '', y = expression(paste( 'Effect estimates (GLM)'))) + 
-  scale_x_discrete(limits = rev(c( "temp", "ah","pm2.5", "o3")), 
-                   labels = rev(c( expression("T"), expression("AH"),expression(PM[2.5]), expression(O[3])))) +
-  geom_hline(yintercept = 0, linetype = 2, color = "grey") +
-  mytheme 
-
-p_glm_vs_1
+  scale_y_continuous(breaks = c(0)) +  
+  scale_fill_gradientn(name = "Effect Size", 
+                       colors = rev(brewer.pal(11, "RdBu")),  
+                       limits = c(-0.4, 0.4), 
+                       breaks = c(-0.4, 0, 0.4), 
+                       labels = c("-0.4", "0", "0.4")) +
+  scale_shape_manual(name = "Lag", 
+                     values = c(21, 22, 23)) + 
+  labs(x = '', y = expression(paste('Effect estimates'))) + 
+  scale_x_discrete(limits = rev(c("temp", "ah", "pm2.5", "o3")), 
+                   labels = rev(c(expression("T"), expression("AH"), expression(PM[2.5]), expression(O[3])))) +
+  geom_hline(yintercept = 0, linetype = 2, color = "gray") +
+  mytheme +
+  guides(shape = guide_legend(label.position = "bottom", 
+                              title.position = "top", 
+                              nrow = 1)) + 
+  theme(axis.title.y = element_blank(), 
+        axis.text.y = element_blank(), 
+        axis.ticks.y = element_blank(),
+        panel.border = element_blank(),
+        axis.line.y = element_blank(), 
+        legend.key = element_blank(), 
+        legend.background = element_blank()) 
 
