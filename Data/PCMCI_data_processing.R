@@ -15,7 +15,7 @@ dfA$fluP <- logitTransform(dfA$fluP)
 dfA <- dfA %>% select(date,state,fluP,temp,ah,o3,pm2.5)
 
 # centralization
-siteminus=function(x){x=x-mean(x,na.rm=T)}
+siteminus=function(x){x=x-mean(x,na.rm=T)}   
 
 statemean=function(x){x=mean(x,na.rm=T)}
 
