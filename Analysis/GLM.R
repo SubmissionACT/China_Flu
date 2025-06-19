@@ -3,7 +3,7 @@ library(tidyverse); library(lubridate); library(dlnm); library(splines);
 library(tsModel); library(gnm);library(ggpubr);library(metafor);
 library(mgcv); library(imputeTS); library(RColorBrewer)
 
-df <- read.csv("china_flu_season.csv")
+df <- read.csv("china_flu_season.csv")    
 dfA <- df %>% mutate(fluP=ifelse(fluP==0, 1e-5, fluP), year = year(date), month = month(date))
 
 ### State-level GLM ###

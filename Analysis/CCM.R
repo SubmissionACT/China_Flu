@@ -6,7 +6,7 @@ packages=c('tidyverse','knitr','lubridate','dplyr','purrr','rEDM','metap',
            'customLayout', 'patchwork', 'grid', 'gridExtra',
            'usmap', 'maps', 'metap', 'scales', 'ggridges',
            'ggforce', 'ggbeeswarm')
-lapply(packages, require, character.only=T)
+lapply(packages, require, character.only=T)   
 
 # parallel computing parameters
 cores_all=detectCores()
